@@ -1,97 +1,87 @@
-from flask import Flask, render_template, request, redirect, url_for
-import sqlite3
+from flask import Flask,  render_template, request, redirect, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Column, Integer, String
+# from flask_wtf import FlaskForm
+# from wtforms import StringField, TextAreaField, SubmitField
+# from wtforms.validators import DataRequired, Email, Length
 
-
-
+# Initialize the Flask application
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'asdff'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///contact.db'
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Configure the SQLite database
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///contact.db'  # Path to SQLite DB
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
+# Initialize SQLAlchemy with the Flask app
 db = SQLAlchemy(app)
-
+                        
 # Define the Contact model
 class Contact(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)
-    email = db.Column(db.String(50), nullable=False,unique=True)
-    message = db.Column(db.String(100), nullable=False)
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), nullable=False)
+    email = Column(String(100), nullable=False)
+    phone = Column(String(20), nullable=False)
+    message = Column(String(500), nullable=True)
 
-    def __repr__(self):
-        return f'<Contact {self.name}'
-    
-# Create the database (Run this only once to create the table)
-@app.before_first_request
-def create_tables():
-    db.create_all()
+# Define the ContactForm using Flask-WTF
+""" 
+class ContactForm(FlaskForm):
+    name = StringField('Name', validators=[DataRequired(), Length(max=50)])
+    email = StringField('Email', validators=[DataRequired(), Email(), Length(max=100)])
+    phone = StringField('Phone Number', validators=[DataRequired(), Length(max=20)])
+    message = TextAreaField('Message', validators=[DataRequired(), Length(max=500)])
+    submit = SubmitField('Submit')
 
-# Create a database connection
-def get_db_connection():
-    conn = sqlite3.connect('contact.db')  # Database file inside 'instance' folder
-    conn.row_factory = sqlite3.Row
-    return conn
 
-# Initialize the database (only run this once, or when needed)
-def init_db():
-    conn = get_db_connection()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS contact (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT NOT NULL,
-            message TEXT NOT NULL
+# Route to display the contact form and handle form submission
+@app.route('/', methods=['GET', 'POST'])
+def contact():
+    form = ContactForm()
+    if form.validate_on_submit():
+        # Create a new Contact instance
+        new_contact = Contact(
+            name=form.name.data,
+            email=form.email.data,
+            phone=form.phone.data,
+            message=form.message.data
         )
-    ''')
-    conn.commit()
-    conn.close()
+        # Add and commit the new contact to the database
+        db.session.add(new_contact)
+        db.session.commit()
+        flash('Message sent successfully!', 'success')
+        return redirect(url_for('contact'))
+    return render_template('contact.html', form=form)
 
+"""
 
-@app.route("/")
-def hello_world():
-    return "<p>Hello, World!</p>"   
-
-# Route for displaying the contact form
-@app.route('/contact', methods=['GET', 'POST'])
-def contacts():
+# Route to create a new contact record
+@app.route('/create-contact', methods=['POST', 'GET'])
+def create_contact():
     if request.method == 'POST':
         name = request.form['name']
         email = request.form['email']
         message = request.form['message']
+        phone = request.form['phone'],
         
-        print(" Form data :", name, email, message)
+        print(" Form data :", name, email, phone, message)
         # Store the form data into the SQLite database
-        conn = get_db_connection()
-        conn.execute('INSERT INTO contact (name, email, message) VALUES (?, ?, ?)',
-                     (name, email, message))
-        conn.commit()
-        conn.close()
-        
-        # Redirect to a success page
+        new_contact = Contact(name=name, email=email, phone=str(phone), message=message)
+        db.session.add(new_contact)
+        db.session.commit()
+       # Redirect to a success page
         return render_template('success.html')
-        # return redirect(url_for('success'))
-    
+   # Route to display the contact form
     return render_template('contact.html')
 
-# List users in Table from databse
-@app.route('/view-users', methods=['GET'])
-def view_users():
-    # Connect to the database
-    conn = get_db_connection()
-    # Fetch data from the database
-    # users = conn.execute('SELECT * FROM contact').fetchall()
-    users = Contact.query.all()  
-    print("Users : ", users)
-    conn.close()
-    # Send the data to the template
-    return render_template('view-users.html', users=users)
+
+@app.route('/contacts', methods=['GET'])
+def get_contacts():
+    contacts = Contact.query.all()
+    return render_template('view-users.html', contacts=contacts)
 
 
-
-
-
+# Initialize the database
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
-    init_db()  # Initialize the database
     app.run(debug=True)
