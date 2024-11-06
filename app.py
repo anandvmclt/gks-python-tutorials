@@ -1,14 +1,14 @@
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request
+from flask_restful import Resource, Api, abort
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.exc import IntegrityError
 
 app = Flask(__name__)
+api = Api(app)
 
 # Configure SQLite database
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
-
 
 # Define the SQLAlchemy model
 class Item(db.Model):
@@ -18,79 +18,72 @@ class Item(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
 
     def to_dict(self):
-            return {
-                "id": self.id,
-                "name": self.name,
-                "description": self.description,
-                "quantity": self.quantity
-            }
-
-
-
-
-# 1. Create a New Item (POST /items)
-@app.route('/items', methods=['POST'])
-def create_item():
-    data = request.get_json()
-    print("data", data)
-    new_item = Item(
-        name=data.get('name'),
-        description=data.get('description'),
-        quantity=data.get('quantity')
-    )
-    db.session.add(new_item)
-    db.session.commit()
-    result_data =  {
-            "id": new_item.id,
-            "name": new_item.name,
-            "description": new_item.description,
-            "quantity": new_item.quantity
-            }
-    return jsonify(result_data), 201
-
-
-# 2. Retrieve All Items (GET /items)
-@app.route('/items', methods=['GET'])
-def get_items():
-    items = Item.query.all()
-    print("items", items)
-    result = []
-    for obj in items:
-        result.append(obj.to_dict())
-    return jsonify(result), 200
-    # return jsonify([item.to_dict() for item in items]), 200
-
-# 3. Retrieve a Single Item by ID (GET /items/<id>)
-@app.route('/item/<int:id>', methods=['GET'])
-def get_item(id):
-    item = Item.query.get_or_404(id)
-    # print("item", item, "type", type(item))
-    return jsonify({"name": item.name, "id": item.id}), 200
-
-
-# 4. Update an Item by ID (PUT /items/<id>)
-@app.route('/items/<int:id>', methods=['PUT'])
-def update_item(id):
-    item = Item.query.get_or_404(id)
-    data = request.get_json()
-    item.name = data.get('name', item.name)
-    item.description = data.get('description', item.description)
-    item.quantity = data.get('quantity', item.quantity)
-    db.session.commit()
-    return jsonify(item.to_dict()), 200
-
-# 5. Delete an Item by ID (DELETE /items/<id>)
-@app.route('/items/<int:id>', methods=['DELETE'])
-def delete_item(id):
-    item = Item.query.get_or_404(id)
-    db.session.delete(item)
-    db.session.commit()
-    return jsonify({"message": "Item deleted successfully"}), 200
-
+        return {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "quantity": self.quantity
+        }
 
 # Create the database tables
 with app.app_context():
     db.create_all()
+
+### Step 4: Define Flask-RESTful Resources
+
+class ItemListResource(Resource):
+    # Get all items
+    def get(self):
+        type_ = request.args.get('type') 
+        print("Query param type :", type_)
+        if type_ is None:
+            items = Item.query.all()
+            return [item.to_dict() for item in items], 200
+        else:
+            items = Item.query.filter_by(name=type_).all()
+        return [item.to_dict() for item in items], 200
+
+    # Create a new item
+    def post(self):
+        data = request.get_json()
+        new_item = Item(
+            name=data.get('name'),
+            description=data.get('description'),
+            quantity=data.get('quantity')
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        return new_item.to_dict(), 201
+
+
+class ItemResource(Resource):
+    # Get a single item by ID
+    def get(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        return item.to_dict(), 200
+
+    # Update an item by ID
+    def put(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        data = request.get_json()
+        item.name = data.get('name', item.name)
+        item.description = data.get('description', item.description)
+        item.quantity = data.get('quantity', item.quantity)
+        db.session.commit()
+        return item.to_dict(), 200
+
+    # Delete an item by ID
+    def delete(self, item_id):
+        item = Item.query.get_or_404(item_id)
+        db.session.delete(item)
+        db.session.commit()
+        return {"message": "Item deleted successfully"}, 200
+
+
+### Step 5: Add Resources to the API
+
+api.add_resource(ItemListResource, '/items')        # For listing and creating items
+api.add_resource(ItemResource, '/items/<int:item_id>')  # For CRUD operations on single items
 
 # Run the Flask app
 if __name__ == '__main__':
